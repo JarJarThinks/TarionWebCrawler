@@ -49,15 +49,15 @@ class ScrapperThread(Thread):
 		]
 
 		for year in range (2008,2019):
-			ROW_HEADERS.append('Freehold Possessions' + str(year))
-			ROW_HEADERS.append('Condo Unit Possessions' + str(year))
-			ROW_HEADERS.append('Total Possessions' + str(year))
-			ROW_HEADERS.append('Chargeable Conciliations' + str(year))
-			ROW_HEADERS.append('Homes with Claims (Excluding Major Structural Defects)' + str(year))
-			ROW_HEADERS.append('Dollars Paid in Claims (Excluding Major Structural Defects)' + str(year))
-			ROW_HEADERS.append('Homes with Major Structural Defect Claims' + str(year))
-			ROW_HEADERS.append('Dollars Paid in Major Structural Defect Claims' + str(year))
-			ROW_HEADERS.append('Total Dollars Paid in Claims' + str(year))
+			ROW_HEADERS.append('Freehold Possessions ' + str(year))
+			ROW_HEADERS.append('Condo Unit Possessions ' + str(year))
+			ROW_HEADERS.append('Total Possessions ' + str(year))
+			ROW_HEADERS.append('Chargeable Conciliations ' + str(year))
+			ROW_HEADERS.append('Homes with Claims (Excluding Major Structural Defects) ' + str(year))
+			ROW_HEADERS.append('Dollars Paid in Claims (Excluding Major Structural Defects) ' + str(year))
+			ROW_HEADERS.append('Homes with Major Structural Defect Claims ' + str(year))
+			ROW_HEADERS.append('Dollars Paid in Major Structural Defect Claims ' + str(year))
+			ROW_HEADERS.append('Total Dollars Paid in Claims ' + str(year))
 			
 		ROW_HEADERS.append('Freehold Possessions Total')
 		ROW_HEADERS.append('Condo Unit Possessions Total')
