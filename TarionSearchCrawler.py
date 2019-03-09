@@ -93,13 +93,20 @@ class ScrapperThread(Thread):
 			wx.PostEvent(self._notify_window, UpdateEvent(True))
 			return
 		 #try to load the search url
-		page = requests.get(page_url, headers = headers)
+		try:
+			page = requests.get(page_url, headers = headers)
+		except Exception as ex:
+			template = "\nAn exception of type {0} occurred. Stopping crawler. Arguments:\n{1!r}"
+			message = template.format(type(ex).__name__, ex.args)
+			wx.PostEvent(self._notify_window,UpdateEvent(message))
+			wx.PostEvent(self._notify_window,UpdateEvent(True))
+			
 		if (page.status_code != 200):
 			wx.PostEvent(self._notify_window, UpdateEvent('Failed to load page. Check URL and internet connection.\n'))
-			
 			wx.PostEvent(self._notify_window, UpdateEvent(True))
 			return
 		#turn the requests page into a BeautifulSoup for easier handling
+		
 		soup = BeautifulSoup(page.text, 'html.parser')
 		table = soup.find('tbody') #get the table
 		if (table is None):
@@ -162,6 +169,8 @@ class ScrapperThread(Thread):
 				
 		start_row = self._arg[5]
 		start_row = int(start_row) - 1
+		
+		delay_time = int(self._arg[6])
 
 		pages = [] #pages contains the strings of the URLs for all the pages in the search
 		for i in range(1, last_page_num + 1): #the pages list is one behind since we're not counting page 0, ie page[22] refers to ...&page=23
@@ -175,18 +184,28 @@ class ScrapperThread(Thread):
 				wx.PostEvent(self._notify_window, UpdateEvent(True))
 				return
 			if (i>0): #if not parsing the loaded page, load the new page
+				start_row = 0
 				loaded = False
 				while (not loaded):
-					page = requests.get(pages[i-1], headers = headers)
-					soup = BeautifulSoup(page.text, 'html.parser')
-					table = soup.find('tbody') #get the table
-					if (table is None): #if it failed to load
-						wx.PostEvent(self._notify_window,UpdateEvent("Page didn't load, retrying in 5 seconds\n"))
+					try:
+						page = requests.get(pages[i-1], headers = headers)
+					except Exception as ex:
+						template = "\nAn exception of type {0} occurred. Stopping crawler. Arguments:\n{1!r}"
+						message = template.format(type(ex).__name__, ex.args)
+						wx.PostEvent(self._notify_window,UpdateEvent(message))
+						wx.PostEvent(self._notify_window,UpdateEvent(True))
+						
+					if (page.status_code != 200):
+						wx.PostEvent(self._notify_window, UpdateEvent('Failed to load page. Retrying in 5 seconds. Check internet connection.\n'))
 						time.sleep(5)
-
 					else:
-						table_rows = table.find_all('tr')
-						loaded = True
+						soup = BeautifulSoup(page.text, 'html.parser')
+						table = soup.find('tbody') #get the table
+						if (table is None): #if it failed to load
+							wx.PostEvent(self._notify_window,UpdateEvent("Page didn't load, retrying in 5 seconds\n"))
+							time.sleep(5)
+						else:
+							loaded = True
 			table_rows = table.find_all('tr')
 			wx.GetApp().Yield()
 
@@ -203,17 +222,27 @@ class ScrapperThread(Thread):
 				#pulling the information from the profile page
 				while (not loaded):
 					profile_url = page_url[:22] + items[0].find('a').get('href')
-					profile_page = requests.get(profile_url, headers = headers)
-					profile_soup = BeautifulSoup(profile_page.text, 'html.parser')
-					company_info = profile_soup.find(class_="block block-builder-directory block-company-information-block clearfix")
-					profile_tables = profile_soup.find_all('tbody') #get the "At a Glance" table and the "Possessions Information" Table
-					glance_rows = profile_tables[0].find_all('tr') #split the rows of the "At a Glance" table
-					possessions_rows = profile_tables[1].find_all('tr') #split the rows of the "Possessions" table
-					if (company_info is None): #if it failed to load
-						wx.PostEvent(self._notify_window,UpdateEvent("Page didn't load, retrying in 5 seconds"))
-						time.sleep(5)
+					try:
+						profile_page = requests.get(profile_url, headers = headers)
+					except Exception as ex:
+						template = "\nAn exception of type {0} occurred. Stopping crawler. Arguments:\n{1!r}"
+						message = template.format(type(ex).__name__, ex.args)
+						wx.PostEvent(self._notify_window,UpdateEvent(message))
+						wx.PostEvent(self._notify_window,UpdateEvent(True))
+					
+					if (profile_page.status_code != 200):
+						wx.PostEvent(self._notify_window, UpdateEvent('Failed to load page. Retrying in 10 seconds. Check internet connection.\n'))
+						time.sleep(10)
 					else:
 						loaded = True
+					profile_soup = BeautifulSoup(profile_page.text, 'html.parser')
+					company_info = profile_soup.find(class_="block block-builder-directory block-company-information-block clearfix")
+
+						
+				profile_tables = profile_soup.find_all('tbody') #get the "At a Glance" table and the "Possessions Information" Table
+				glance_rows = profile_tables[0].find_all('tr') #split the rows of the "At a Glance" table
+				possessions_rows = profile_tables[1].find_all('tr') #split the rows of the "Possessions" table
+
 				if self._want_abort:
 					wx.PostEvent(self._notify_window, UpdateEvent(True))
 					return
@@ -252,7 +281,7 @@ class ScrapperThread(Thread):
 				if self._want_abort:
 					wx.PostEvent(self._notify_window, UpdateEvent(True))
 					return
-				time.sleep(3)
+				time.sleep(delay_time)
 			
 		wx.PostEvent(self._notify_window,UpdateEvent("\nData Scrape from page " +str(start_page_num+1) + " to page " +str(end_page_num) +" finished\n"))
 		wx.PostEvent(self._notify_window, UpdateEvent(True))
@@ -286,7 +315,14 @@ class Frame(wx.Frame):
 		self.Rowtxt = wx.TextCtrl(self.panel, -1, size=(50,-1))
 		self.Rowtxt.SetValue('1')
 		self.Rowtxt.SetEditable(False)
-		self.Bind(wx.EVT_SCROLL, self.SlideUpdate, self.RowSlider)
+		self.Bind(wx.EVT_SCROLL, self.RowSlideUpdate, self.RowSlider)
+		
+		self.TimeSlider = wx.Slider(self.panel, -1, minValue=3, maxValue = 15, size = (400,-1))
+		self.TimeSlider.SetValue(5)
+		self.Timetxt = wx.TextCtrl(self.panel, -1, size=(50,-1))
+		self.Timetxt.SetValue('5 sec')
+		self.Timetxt.SetEditable(False)
+		self.Bind(wx.EVT_SCROLL, self.TimeSlideUpdate, self.TimeSlider)
 		
 		
 		modeList =["Overwrite", "Append"]
@@ -299,26 +335,37 @@ class Frame(wx.Frame):
 		self.txt4 = wx.StaticText(self.panel, -1,'End Page:')
 		self.txt5 = wx.StaticText(self.panel, -1,'Start Row:')
 		self.txt6 = wx.StaticText(self.panel, -1,' .csv')
+		self.txt7 = wx.StaticText(self.panel, -1,'Time between page loads:')
 
 		sizer = wx.BoxSizer(wx.VERTICAL)
 		rowSizer = wx.BoxSizer(wx.HORIZONTAL)
+		timeSizer = wx.BoxSizer(wx.HORIZONTAL)
 		startStopSizer = wx.BoxSizer(wx.HORIZONTAL)
 		fileSizer = wx.BoxSizer(wx.HORIZONTAL)
 		sizer.Add(self.txt1)
 		sizer.Add(self.URLtxt)
 		sizer.Add(self.txt2)
+		
 		fileSizer.Add(self.Filetxt)
 		fileSizer.Add(self.txt6)
 		sizer.Add(fileSizer)
+		
 		sizer.Add(self.rbox)
 		sizer.Add(self.txt3)
 		sizer.Add(self.Starttxt)
 		sizer.Add(self.txt4)
 		sizer.Add(self.Endtxt)
 		sizer.Add(self.txt5)
+
 		rowSizer.Add(self.Rowtxt)
 		rowSizer.Add(self.RowSlider)
 		sizer.Add(rowSizer)
+		
+		sizer.Add(self.txt7)
+		timeSizer.Add(self.Timetxt)
+		timeSizer.Add(self.TimeSlider)
+		sizer.Add(timeSizer)
+		
 		startStopSizer.Add(self.Startbtn)
 		startStopSizer.Add(self.Stopbtn)
 		sizer.Add(startStopSizer)
@@ -332,10 +379,10 @@ class Frame(wx.Frame):
 		
 	def OnStart(self, event):
 		if not self.worker:
-			arg =[self.Filetxt.GetValue(), self.rbox.GetSelection(), self.URLtxt.GetValue(), self.Starttxt.GetValue(),self.Endtxt.GetValue(),self.RowSlider.GetValue()]
+			arg =[self.Filetxt.GetValue(), self.rbox.GetSelection(), self.URLtxt.GetValue(), self.Starttxt.GetValue(),self.Endtxt.GetValue(),self.RowSlider.GetValue(), self.TimeSlider.GetValue()]
 			if arg[1] == 0:
 				confirm = wx.MessageDialog(self.panel, 'You are about to overwrite ' + arg[0]+'.csv.\nAre you sure you want to do this?' ,
-					caption="Overwrite Warning", style=wx.YES_NO|wx.CANCEL|wx.CENTRE)
+					caption="Overwrite Warning", style=wx.YES_NO|wx.CENTRE)
 				if (confirm.ShowModal() != wx.ID_YES):
 					return
 				
@@ -346,8 +393,10 @@ class Frame(wx.Frame):
 			self.Statustxt.AppendText('\nStopping the Crawler\n')
 			self.worker.abort()
 		
-	def SlideUpdate(self,e):
+	def RowSlideUpdate(self,e):
 		self.Rowtxt.SetValue(str(self.RowSlider.GetValue()))
+	def TimeSlideUpdate(self,e):
+		self.Timetxt.SetValue(str(self.TimeSlider.GetValue()) + " sec")
 		
 	def Update(self, event):
 		if event.data == True:
